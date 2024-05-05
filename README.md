@@ -41,17 +41,111 @@ Entre sus ventajas:
 
 ### 2. Linker
 
-- **¿Que es un linker? ¿que hace?**
-- **¿Que es la dirección que aparece en el script del linker?¿Porqué es necesaria?**
-- **Compare la salida de objdump con hd, verifique donde fue colocado el programa dentro de la imagen.**
-- **Grabar la imagen en un pendrive y probarla en una pc y subir una foto**
-- **¿Para que se utiliza la opción --oformat binary en el linker?**
+- **¿Qué es un linker? ¿Qué hace?**
+  
+Linker es una herramienta de software utilizada en el proceso de compilación de programas. Su función principal consiste en vincular o enlazar varios archivos objetos generados por el compilador en un único archivo ejecutable o en una biblioteca compartida. Esta tarea implica combinar los archivos y resolver las referencias cruzadas entre ellos, garantizando la correcta conexión entre las definiciones de funciones y variables utilizadas en diferentes partes del programa. 
 
+![Linker](https://github.com/AndyTaborda/tp3-siscom/blob/main/linker.png)
+  
+- **¿Qué es la dirección que aparece en el script del linker?¿Porqué es necesaria?**
+
+La dirección que aparece en el script del linker es **0x7c00**. Esta dirección es importante porque indica al linker dónde debe cargar el código en la imagen de disco generada. En este caso, 0x7c00 es la dirección a la que el BIOS carga el sector de arranque al iniciar el sistema desde un disco.
+
+Es necesaria porque el sector de arranque (512 bytes) tiene una ubicación específica en la imagen del disco y debe ser cargado en memoria en una dirección conocida para que el BIOS pueda transferir el control al código de arranque correctamente. Si no especificamos esta dirección, el código puede no ejecutarse correctamente o el sistema podría no arrancar en absoluto.
+
+- **Compare la salida de objdump con hd, verifique donde fue colocado el programa dentro de la imagen.**
+
+- **Grabar la imagen en un pendrive y probarla en una pc y subir una foto**
+
+Para crear la imagen se utiliza los siguientes codigos, instrucciones y comandos:
+
+main.S:
+```asm
+.code16
+    mov $msg, %si
+    mov $0x0e, %ah
+loop:
+    lodsb
+    or %al, %al
+    jz halt
+    int $0x10
+    jmp loop
+halt:
+    hlt
+msg:
+    .asciz "hello world"
+```
+
+link.ld:
+```
+SECTIONS
+{
+    /* The BIOS loads the code from the disk to this location.
+     * We must tell that to the linker so that it can properly
+     * calculate the addresses of symbols we might jump to.
+     */
+    . = 0x7c00;
+    .text :
+    {
+        __start = .;
+        *(.text)
+        /* Place the magic boot bytes at the end of the first 512 sector. */
+        . = 0x1FE;
+        SHORT(0xAA55)
+    }
+}
+```
+
+Para crear la imagen y probarla en qemu:
+```sh
+as -g -o main.o main.S
+ld --oformat binary -o main.img -T link.ld main.o
+qemu-system-x86_64 -hda main.img
+```
+
+Resultado:
+
+![image](https://github.com/marcosraimondi1/tp3-siscom/assets/69517496/f8fa7282-1792-49b3-a8cf-629ca975dbd1)
+
+
+- **¿Para qué se utiliza la opción --oformat binary en el linker?**
+
+La opción --oformat binary en el linker (ld) se utiliza para especificar el formato del archivo de salida. El linker genera un archivo binario sin ningún formato específico de objeto ejecutable. Esto significa que el archivo resultante contendrá simplemente los datos y código que se han enlazado, sin ningún encabezado ni información adicional específica del formato del archivo ejecutable.
 
 ### 3. Modo Protegido
 
 - **Crear un código assembler que pueda pasar a modo protegido (sin macros).**
+
+Se utiliza como base el codigo de ensablador [ejemplo impresion](https://github.com/cirosantilli/x86-bare-metal-examples/blob/master/common.h#L135) de la macro PROTECTED_MODE. Se consideran los siguientes pasos para entrar en modo protegido:
+1. Deshabilitar interrupciones
+2. Cargar la GDT
+3. Fijar el bit más bajo del CR0 en 1
+4. Saltar a la sección de código de 32 bits
+5. Configurar el resto de los segmentos
+
+
 - **¿Cómo sería un programa que tenga dos descriptores de memoria diferentes, uno para cada segmento (código y datos) en espacios de memoria diferenciados?**
+
+....
+
 - **Cambiar los bits de acceso del segmento de datos para que sea de solo lectura,  intentar escribir, ¿Que sucede? ¿Que debería suceder a continuación? (revisar el teórico) Verificarlo con gdb.**
+
+....
+
 - **En modo protegido, ¿Con qué valor se cargan los registros de segmento ? ¿Porque?**
 
+En modo protegido, los registros de segmento (CS, DS, ES, FS, GS, SS) deben cargarse con selectores de segmento válidos. Cada selector de segmento apunta a una entrada en la tabla de descriptores de segmento global (GDT). Esta tabla contiene descripciones de segmentos que especifican la base, el límite y los atributos de los segmentos de memoria.
+
+La razón para cargar los registros de segmento con selectores válidos es garantizar que el procesador pueda acceder a la memoria de manera adecuada, aplicando los permisos y atributos especificados en las entradas de la GDT. Esto es fundamental para mantener la protección y seguridad del sistema, así como para garantizar un acceso eficiente a la memoria.
+
+En codigo assembler:
+```asm
+/* Those movs are mandatory because they update the descriptor cache */
+/* se cargan los registros de segmento con el selector de segmento correspondiente */
+    mov $DATA_SEG, %ax
+    mov %ax, %ds
+    mov %ax, %es
+    mov %ax, %fs
+    mov %ax, %gs
+    mov %ax, %ss
+```
